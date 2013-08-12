@@ -31,7 +31,7 @@ def get_event_flags(mask):
     flags = dict(filter(lambda flag: is_set(flag[1]), ALL_FSEVENT_FLAGS.iteritems()))
     return flags.keys()
 
-class FSTrigger(object):
+class EventTriggerManager(object):
     def __init__(self, triggers):
         self.observer = Observer()
         self.firing_queue = []
@@ -107,5 +107,5 @@ if __name__=='__main__':
         pt = PathTrigger(*tmp)
         triggers.append(pt)
 
-    fst = FSTrigger(triggers)
+    fst = EventTriggerManager(triggers)
     fst.run_fsevents_demo()
