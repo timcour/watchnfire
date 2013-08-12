@@ -74,12 +74,15 @@ class EventTriggerManager(object):
             self.firing_queue.pop().fire()
         self._is_executing_firing_queue = False
 
-    def start(self):
+    def start(self, prefire=True):
         self.observer.start()
         for pt in self.triggers:
             print "scheduling stream: %s" % pt
             pt.schedule_execution = self.queue_firing_trigger
             self.observer.schedule(pt.stream)
+        if prefire:
+            for pt in self.triggers:
+                self.queue_firing_trigger(pt)
 
     def stop(self):
         for pt in self.triggers:
@@ -143,8 +146,8 @@ class FSTriggerRunner(object):
         self.trigman = event_manager
         signal.signal(signal.SIGINT, self.sigint_handler)
 
-    def start(self):
-        self.trigman.start()
+    def start(self, prefire=True):
+        self.trigman.start(prefire=prefire)
         while True:
             time.sleep(1)
 
@@ -158,7 +161,9 @@ if __name__=='__main__':
     usage = "usage: %prog [options] path extensions command ..."
     parser = OptionParser(usage=usage)
     parser.add_option("-v", "--verbose", action="store_true",
-                      help=("verbose output"))
+                      help=("verbose output"), dest="verbose")
+    parser.add_option("-f", "--prefire", action="store_true",
+                      help=("run trigger commands on start"), dest="prefire")
     (options, args) = parser.parse_args()
 
     triggers = []
@@ -169,4 +174,4 @@ if __name__=='__main__':
         triggers.append(pt)
 
     etm = EventTriggerManager(triggers)
-    FSTriggerRunner(etm).start()
+    FSTriggerRunner(etm).start(prefire=options.prefire)
