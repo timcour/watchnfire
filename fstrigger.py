@@ -5,11 +5,12 @@
 import fsevents
 import os
 import re
+import signal
 import sys
+import time
+
 from subprocess import Popen, PIPE
 from fsevents import Observer, Stream
-
-from pprint import pformat as pf
 
 def is_flag(testval):
     if not isinstance(testval, int):
@@ -33,6 +34,7 @@ def get_event_flags(mask):
 
 class EventTriggerManager(object):
     def __init__(self, triggers):
+        self.triggers = triggers
         self.observer = Observer()
         self.firing_queue = []
 
@@ -42,12 +44,18 @@ class EventTriggerManager(object):
             print "adding %s to firing_queue" % trigger
             self.firing_queue.insert(0, trigger)
 
-    def run_fsevents_demo(self):
+    def start(self):
         self.observer.start()
-        for pt in triggers:
+        for pt in self.triggers:
             print "scheduling stream: %s" % pt
             pt.schedule_execution = self.queue_firing_trigger
             self.observer.schedule(pt.stream)
+
+    def stop(self):
+        for pt in self.triggers:
+            self.observer.unschedule(pt.stream)
+        self.observer.stop()
+        self.observer.join()
 
 class PathTrigger(object):
     def __init__(self, path, extensions, command, ignore_file_pattern="^\.#.*$"):
@@ -92,6 +100,21 @@ class PathTrigger(object):
     def __repr__(self):
         return str(self)
 
+class FSTriggerRunner(object):
+    def __init__(self, event_manager):
+        self.trigman = event_manager
+        signal.signal(signal.SIGINT, self.sigint_handler)
+
+    def start(self):
+        self.trigman.start()
+        while True:
+            time.sleep(1)
+
+    def sigint_handler(self, signal, frame):
+        print 'SIGINT caught, exiting...'
+        self.trigman.stop()
+        sys.exit(0)
+
 if __name__=='__main__':
     from optparse import OptionParser
     usage = "usage: %prog [options] path extensions command ..."
@@ -107,5 +130,5 @@ if __name__=='__main__':
         pt = PathTrigger(*tmp)
         triggers.append(pt)
 
-    fst = EventTriggerManager(triggers)
-    fst.run_fsevents_demo()
+    etm = EventTriggerManager(triggers)
+    FSTriggerRunner(etm).start()
