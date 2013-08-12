@@ -32,7 +32,7 @@ def get_event_flags(mask):
     return flags.keys()
 
 class FSTrigger(object):
-    def __init__(self, path_trigger_map):
+    def __init__(self, triggers):
         self.observer = Observer()
         self.firing_queue = []
 
@@ -44,7 +44,7 @@ class FSTrigger(object):
 
     def run_fsevents_demo(self):
         self.observer.start()
-        for pt in path_trigger_map.values():
+        for pt in triggers:
             print "scheduling stream: %s" % pt
             pt.schedule_execution = self.queue_firing_trigger
             self.observer.schedule(pt.stream)
@@ -71,11 +71,11 @@ class PathTrigger(object):
         proc.wait()
 
     def handle_event(self, event):
+        print event.name, event.cookie, get_event_flags(event.mask)
         event_path = os.path.dirname(event.name)
         event_file = os.path.basename(event.name)
         if (self.extension_matches(event.name)
             and not self.should_ignore_file(event_file)):
-            print event.name, event.cookie, get_event_flags(event.mask)
             self.schedule_execution(self)
 
     def extension_matches(self, filepath):
@@ -85,7 +85,6 @@ class PathTrigger(object):
     def should_ignore_file(self, filename):
         print 'does "%s" match %s' % (self.file_ignore_regexp.pattern, filename)
         return bool(self.file_ignore_regexp.match(filename))
-
 
     def __str__(self):
         return '<%s {path: "%s", regexp: "%s", command: "%s"}>' % (
@@ -101,12 +100,12 @@ if __name__=='__main__':
                       help=("verbose output"))
     (options, args) = parser.parse_args()
 
-    path_trigger_map = {}
+    triggers = []
     print args
     for i in xrange(0, len(args), 3):
         tmp = args[i:i+3]
         pt = PathTrigger(*tmp)
-        path_trigger_map[pt.path] = pt
+        triggers.append(pt)
 
-    fst = FSTrigger(path_trigger_map)
+    fst = FSTrigger(triggers)
     fst.run_fsevents_demo()
