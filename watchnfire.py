@@ -2,12 +2,12 @@
 
 # Copyright (C) 2013 by Tim Courrejou. All rights reserved
 
-#TODO: better logging
 #TODO: config file?
 #TODO: unit testing
 #TODO: docs
 
 import fsevents
+import logging
 import os
 import re
 import signal
@@ -17,6 +17,17 @@ import time
 from fsevents import Observer, Stream
 from subprocess import Popen, PIPE
 from threading import Timer
+
+def get_logger(level=logging.INFO):
+    logger = logging.getLogger()
+    handler = logging.StreamHandler(stream=sys.stdout)
+    formatter = logging.Formatter('%(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(level)
+    return logger
+
+log = get_logger()
 
 def is_flag(testval):
     if not isinstance(testval, int):
@@ -50,24 +61,24 @@ class EventTriggerManager(object):
 
     def queue_firing_trigger(self, trigger):
         if trigger not in self.firing_queue:
-            print "adding %s to firing_queue" % trigger
+            log.debug("adding %s to firing_queue" % trigger)
             self.firing_queue.insert(0, trigger)
 
         if (not self._is_executing_firing_queue
             and self.firing_queue_thread.is_alive()):
-            print "received another queue request, canceling timer"
+            log.debug("received another queue request, canceling timer")
             self.firing_queue_thread.cancel()
             self.firing_queue_thread.join()
 
         if not self.firing_queue_thread.is_alive():
             self.firing_queue_thread = Timer(self.firing_wait, self.execute_firing_queue)
-            print "starting new timer"
+            log.debug("starting new timer")
             self.firing_queue_thread.start()
 
     def execute_firing_queue(self):
-        print "executing firing queue"
+        log.debug("executing firing queue")
         if self._is_executing_firing_queue:
-            "execution in progress"
+            log.debug("execution in progress")
             return
         self._is_executing_firing_queue = True
         while len(self.firing_queue):
@@ -77,7 +88,7 @@ class EventTriggerManager(object):
     def start(self, prefire=True):
         self.observer.start()
         for pt in self.triggers:
-            print "scheduling stream: %s" % pt
+            log.debug("scheduling stream: %s" % pt)
             pt.schedule_execution = self.queue_firing_trigger
             self.observer.schedule(pt.stream)
         if prefire:
@@ -113,9 +124,9 @@ class PathTrigger(object):
         self.schedule_execution = lambda x: None
 
     def fire(self):
-        print "---> firing: %s" % self.command
+        log.info("---> firing: %s" % self.command)
         self.proc = Popen(self.command, shell=True, stdout=PIPE, stderr=PIPE)
-        print self.proc.stdout.read()
+        log.info(self.proc.stdout.read())
         for stream in map(lambda x: getattr(self.proc, x), ['stdin', 'stdout', 'stderr']):
             if stream:
                 stream.close()
@@ -127,7 +138,7 @@ class PathTrigger(object):
             self.proc.kill()
 
     def handle_event(self, event):
-        print event.name, event.cookie, get_event_flags(event.mask)
+        log.debug(event.name, event.cookie, get_event_flags(event.mask))
         event_path = os.path.dirname(event.name)
         event_file = os.path.basename(event.name)
         if (self.extension_matches(event.name)
@@ -135,11 +146,11 @@ class PathTrigger(object):
             self.schedule_execution(self)
 
     def extension_matches(self, filepath):
-        print 'does "%s" match %s' % (self.regexp.pattern, filepath)
+        log.debug('does "%s" match %s' % (self.regexp.pattern, filepath))
         return bool(self.regexp.match(filepath))
 
     def should_ignore_file(self, filename):
-        print 'does "%s" match %s' % (self.file_ignore_regexp.pattern, filename)
+        log.debug('does "%s" match %s' % (self.file_ignore_regexp.pattern, filename))
         return bool(self.file_ignore_regexp.match(filename))
 
     def __str__(self):
@@ -159,7 +170,7 @@ class FSTriggerRunner(object):
             time.sleep(1)
 
     def sigint_handler(self, signal, frame):
-        print 'SIGINT caught, exiting...'
+        log.info('SIGINT caught, exiting...')
         self.trigman.stop()
         sys.exit(0)
 
@@ -173,8 +184,10 @@ if __name__=='__main__':
                       help=("run trigger commands on start"), dest="prefire")
     (options, args) = parser.parse_args()
 
+    log.setLevel(logging.DEBUG if options.verbose else logging.INFO)
+
     triggers = []
-    print args
+    log.debug("trigger args: %s" % args)
     for i in xrange(0, len(args), 3):
         tmp = args[i:i+3]
         pt = PathTrigger(*tmp)
