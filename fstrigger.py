@@ -2,6 +2,11 @@
 
 # Copyright (C) 2013 by Tim Courrejou. All rights reserved
 
+#TODO: better logging
+#TODO: config file?
+#TODO: unit testing
+#TODO: docs
+
 import fsevents
 import os
 import re
