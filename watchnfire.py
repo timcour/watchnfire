@@ -87,9 +87,16 @@ class EventTriggerManager(object):
     def stop(self):
         for pt in self.triggers:
             self.observer.unschedule(pt.stream)
+
+            # remove pending triggers from queue.  This must be done
+            # after unscheduling the stream but before killing a
+            # potential running process to avoid a race condition.
+            self.firing_queue = []
+
             # kill any process being run by the trigger now that it
             # cannot be rescheduled
             pt.killfire()
+
         self.observer.stop()
         self.observer.join()
 
