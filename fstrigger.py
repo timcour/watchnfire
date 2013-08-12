@@ -38,11 +38,21 @@ class EventTriggerManager(object):
         self.observer = Observer()
         self.firing_queue = []
 
+        self._is_executing_firing_queue = False
+
     def queue_firing_trigger(self, trigger):
-        trigger.fire()
         if trigger not in self.firing_queue:
             print "adding %s to firing_queue" % trigger
             self.firing_queue.insert(0, trigger)
+        self.execute_firing_queue()
+
+    def execute_firing_queue(self):
+        if self._is_executing_firing_queue:
+            return
+        self._is_executing_firing_queue = True
+        while len(self.firing_queue):
+            self.firing_queue.pop().fire()
+        self._is_executing_firing_queue = False
 
     def start(self):
         self.observer.start()
