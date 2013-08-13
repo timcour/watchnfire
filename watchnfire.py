@@ -49,22 +49,36 @@ def get_event_flags(mask):
     flags = dict(filter(lambda flag: is_set(flag[1]), ALL_FSEVENT_FLAGS.iteritems()))
     return flags.keys()
 
+class ProcExecutionStats(object):
+    def __init__(self, command=None):
+        self.command = command
+        self.ti = time.time()
+        self.tf = None
+
+    def execution_completed(self):
+        self.tf = time.time()
+
+    def __str__(self):
+        time_ago = (time.time() - self.tf) if self.tf else -1
+        return "%s last run: %ss ago..." % (self.command, int(time_ago))
+
 class EventTriggerManager(object):
     def __init__(self, triggers, queue_execution_wait=0.2):
         self.triggers = triggers
         self.observer = Observer()
+        self.last_execution_stats = None
 
         self.firing_queue = []
         self.firing_wait = queue_execution_wait
         self.firing_queue_thread = Timer(self.firing_wait, self.execute_firing_queue)
-        self._is_executing_firing_queue = False
+        self.is_executing_firing_queue = False
 
     def queue_firing_trigger(self, trigger):
         if trigger not in self.firing_queue:
             log.debug("adding %s to firing_queue" % trigger)
             self.firing_queue.insert(0, trigger)
 
-        if (not self._is_executing_firing_queue
+        if (not self.is_executing_firing_queue
             and self.firing_queue_thread.is_alive()):
             log.debug("received another queue request, canceling timer")
             self.firing_queue_thread.cancel()
@@ -77,13 +91,17 @@ class EventTriggerManager(object):
 
     def execute_firing_queue(self):
         log.debug("executing firing queue")
-        if self._is_executing_firing_queue:
-            log.debug("execution in progress")
+        if self.is_executing_firing_queue:
+            log.error("execution in progress")
             return
-        self._is_executing_firing_queue = True
+        self.is_executing_firing_queue = True
         while len(self.firing_queue):
-            self.firing_queue.pop().fire()
-        self._is_executing_firing_queue = False
+            pt = self.firing_queue.pop()
+            stat = ProcExecutionStats(command=pt.command)
+            pt.fire()
+            stat.execution_completed()
+            self.last_execution_stats = stat
+        self.is_executing_firing_queue = False
 
     def start(self, prefire=True):
         self.observer.start()
@@ -126,7 +144,7 @@ class PathTrigger(object):
     def fire(self):
         log.info("---> firing: %s" % self.command)
         self.proc = Popen(self.command, shell=True, stdout=PIPE, stderr=PIPE)
-        log.info(self.proc.stdout.read())
+        log.info("%s" % self.proc.stdout.read())
         for stream in map(lambda x: getattr(self.proc, x), ['stdin', 'stdout', 'stderr']):
             if stream:
                 stream.close()
@@ -167,6 +185,10 @@ class FSTriggerRunner(object):
     def start(self, prefire=True):
         self.trigman.start(prefire=prefire)
         while True:
+            if (self.trigman.last_execution_stats
+                and not self.trigman.is_executing_firing_queue):
+                sys.stdout.write("\r%s" % self.trigman.last_execution_stats)
+                sys.stdout.flush()
             time.sleep(1)
 
     def sigint_handler(self, signal, frame):
